@@ -50,6 +50,10 @@ module Bundler
         specs[name] = matches.sort_by {|s| [s.version, s.platform.to_s] }
       end
 
+      @all_versions = Hash.new do |candidates, package|
+        candidates[package] = all_versions_for(package)
+      end
+
       @sorted_versions = Hash.new do |candidates, package|
         candidates[package] = sorted_versions_for(package)
       end
@@ -249,7 +253,7 @@ module Bundler
       locked_requirement = base_requirements[name]
       results = filter_matching_specs(results, locked_requirement) if locked_requirement
 
-      versions = results.group_by(&:version).reduce([]) do |groups, (version, specs)|
+      results.group_by(&:version).reduce([]) do |groups, (version, specs)|
         platform_specs = package.platforms.map {|platform| select_best_platform_match(specs, platform) }
 
         # If package is a top-level dependency,
@@ -276,8 +280,6 @@ module Bundler
 
         groups
       end
-
-      @gem_version_promoter.filter_versions(package, versions)
     end
 
     def source_for(name)
@@ -337,7 +339,7 @@ module Bundler
     private
 
     def sorted_versions_for(package)
-      all_versions_for(package).sort
+      @gem_version_promoter.filter_versions(package, @all_versions[package]).sort
     end
 
     def filter_matching_specs(specs, requirements)
@@ -384,6 +386,7 @@ module Bundler
         dep_range = dep_constraint.range
         versions = select_sorted_versions(dep_package, dep_range)
         if versions.empty? && dep_package.ignores_prereleases?
+          @all_versions.delete(dep_package)
           @sorted_versions.delete(dep_package)
           dep_package.consider_prereleases!
           versions = select_sorted_versions(dep_package, dep_range)
